@@ -27,69 +27,52 @@ export default function Home() {
     setLastForm(form);
     setAgentState({ writer: 'idle', reviewer: 'idle', formatter: 'idle' });
 
-    const fd = new FormData();
-    fd.append('title', form.title);
-    fd.append('description', form.description);
-    fd.append('link', form.link);
-    fd.append('tone', form.tone);
-    fd.append('language', form.language);
-    fd.append('audience', form.audience);
-    fd.append('imageCount', String(form.images.length));
+    const body = {
+      title: form.title,
+      description: form.description,
+      link: form.link,
+      tone: form.tone,
+      language: form.language,
+      audience: form.audience,
+      imageCount: form.images.length,
+    };
 
     try {
-      const res = await fetch('/api/generate', { method: 'POST', body: fd });
+      // Writer agent
+      setAgentState((prev) => ({ ...prev, writer: 'working' }));
+      const writeRes = await fetch('/api/agent/write', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!writeRes.ok) throw new Error('Writer agent failed');
+      const { draft } = await writeRes.json();
+      setAgentState((prev) => ({ ...prev, writer: 'done', writerContent: draft }));
 
-      if (!res.ok || !res.body) {
-        throw new Error('Falha na resposta do servidor');
-      }
+      // Reviewer agent
+      setAgentState((prev) => ({ ...prev, reviewer: 'working' }));
+      const reviewRes = await fetch('/api/agent/review', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...body, draft }),
+      });
+      if (!reviewRes.ok) throw new Error('Reviewer agent failed');
+      const { reviewed } = await reviewRes.json();
+      setAgentState((prev) => ({ ...prev, reviewer: 'done', reviewerContent: reviewed }));
 
-      const reader = res.body.getReader();
-      const dec = new TextDecoder();
-      let buffer = '';
+      // Formatter agent
+      setAgentState((prev) => ({ ...prev, formatter: 'working' }));
+      const formatRes = await fetch('/api/agent/format', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...body, reviewed }),
+      });
+      if (!formatRes.ok) throw new Error('Formatter agent failed');
+      const { formatted } = await formatRes.json();
+      setAgentState((prev) => ({ ...prev, formatter: 'done', formatterContent: formatted }));
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += dec.decode(value, { stream: true });
-        const blocks = buffer.split('\n\n');
-        buffer = blocks.pop() ?? '';
-
-        for (const block of blocks) {
-          const line = block.trim();
-          if (!line.startsWith('data: ')) continue;
-          try {
-            const ev = JSON.parse(line.slice(6));
-
-            if (ev.type === 'progress') {
-              setAgentState((prev) => {
-                const next = { ...prev };
-                if (ev.agent === 'writer') {
-                  next.writer = ev.status;
-                  if (ev.content) next.writerContent = ev.content;
-                } else if (ev.agent === 'reviewer') {
-                  next.reviewer = ev.status;
-                  if (ev.content) next.reviewerContent = ev.content;
-                } else if (ev.agent === 'formatter') {
-                  next.formatter = ev.status;
-                  if (ev.content) next.formatterContent = ev.content;
-                }
-                return next;
-              });
-            } else if (ev.type === 'complete') {
-              setFinalPost(ev.content);
-              setTimeout(
-                () => resultRef.current?.scrollIntoView({ behavior: 'smooth' }),
-                200
-              );
-            } else if (ev.type === 'error') {
-              console.error('Agent error:', ev.message);
-            }
-          } catch {
-            // Ignore malformed events
-          }
-        }
-      }
+      setFinalPost(formatted);
+      setTimeout(() => resultRef.current?.scrollIntoView({ behavior: 'smooth' }), 200);
 
       // Generate carousel PDF if images were uploaded
       if (form.images.length > 0) {
