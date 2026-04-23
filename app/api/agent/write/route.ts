@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { runWriterAgent, AgentInput } from '@/lib/agents';
 
 export const runtime = 'nodejs';
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
@@ -17,6 +17,11 @@ export async function POST(request: NextRequest) {
     imageCount: body.imageCount,
   };
 
-  const draft = await runWriterAgent(input);
-  return NextResponse.json({ draft });
+  try {
+    const draft = await runWriterAgent(input);
+    return NextResponse.json({ draft });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Unknown error';
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
 }

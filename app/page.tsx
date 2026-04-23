@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef } from 'react';
-import { Toaster } from 'react-hot-toast';
+import { Toaster, toast } from 'react-hot-toast';
 import PostForm, { FormValues } from '@/components/PostForm';
 import AgentProgress, { AgentState } from '@/components/AgentProgress';
 import PostResult from '@/components/PostResult';
@@ -45,7 +45,10 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
-      if (!writeRes.ok) throw new Error('Writer agent failed');
+      if (!writeRes.ok) {
+        const err = await writeRes.json().catch(() => ({}));
+        throw new Error(err?.error || `Redator falhou (${writeRes.status})`);
+      }
       const { draft } = await writeRes.json();
       setAgentState((prev) => ({ ...prev, writer: 'done', writerContent: draft }));
 
@@ -56,7 +59,10 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...body, draft }),
       });
-      if (!reviewRes.ok) throw new Error('Reviewer agent failed');
+      if (!reviewRes.ok) {
+        const err = await reviewRes.json().catch(() => ({}));
+        throw new Error(err?.error || `Revisor falhou (${reviewRes.status})`);
+      }
       const { reviewed } = await reviewRes.json();
       setAgentState((prev) => ({ ...prev, reviewer: 'done', reviewerContent: reviewed }));
 
@@ -67,7 +73,10 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...body, reviewed }),
       });
-      if (!formatRes.ok) throw new Error('Formatter agent failed');
+      if (!formatRes.ok) {
+        const err = await formatRes.json().catch(() => ({}));
+        throw new Error(err?.error || `Formatador falhou (${formatRes.status})`);
+      }
       const { formatted } = await formatRes.json();
       setAgentState((prev) => ({ ...prev, formatter: 'done', formatterContent: formatted }));
 
@@ -85,7 +94,9 @@ export default function Home() {
         }
       }
     } catch (err) {
-      console.error('Generation error:', err);
+      const msg = err instanceof Error ? err.message : 'Erro desconhecido';
+      toast.error(`Algo deu errado: ${msg}`, { duration: 6000 });
+      setAgentState({ writer: 'idle', reviewer: 'idle', formatter: 'idle' });
     } finally {
       setIsGenerating(false);
     }
