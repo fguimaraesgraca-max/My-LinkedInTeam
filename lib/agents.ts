@@ -5,6 +5,7 @@ const MODEL = 'claude-opus-4-7';
 
 export type Tone = 'executive' | 'friendly' | 'inspiring' | 'educational' | 'celebratory';
 export type Language = 'pt' | 'en' | 'pt-en' | 'en-pt';
+export type Length = 'concise' | 'medium' | 'long';
 
 export interface AgentInput {
   title: string;
@@ -12,6 +13,7 @@ export interface AgentInput {
   link?: string;
   tone: Tone;
   language: Language;
+  length: Length;
   audience: string;
   imageCount?: number;
 }
@@ -35,6 +37,24 @@ const LANG_MAP: Record<Language, string> = {
 [Complete post in English including hashtags]
 ——
 [Post completo em Português incluindo hashtags]`,
+};
+
+const LENGTH_MAP: Record<Length, { single: string; bilingual: string; maxChars: number }> = {
+  concise: {
+    single: 'TAMANHO: post CONCISO, máximo 800 caracteres no total. Seja direto, impactante e objetivo. Vá direto ao ponto sem enrolação.',
+    bilingual: 'TAMANHO: post CONCISO bilíngue, máximo 800 caracteres no total — cada versão com no máximo 380 caracteres. Seja extremamente direto.',
+    maxChars: 800,
+  },
+  medium: {
+    single: 'TAMANHO: post de tamanho MÉDIO, entre 1.000 e 1.800 caracteres. Equilibre profundidade e concisão.',
+    bilingual: 'TAMANHO: post MÉDIO bilíngue, entre 1.000 e 1.800 caracteres no total — cada versão com no máximo 870 caracteres.',
+    maxChars: 1800,
+  },
+  long: {
+    single: 'TAMANHO: post LONGO e detalhado, entre 2.000 e 3.000 caracteres. Explore a narrativa com profundidade, storytelling rico e detalhes relevantes.',
+    bilingual: 'TAMANHO: post LONGO bilíngue, entre 2.000 e 3.000 caracteres no total — cada versão com no máximo 1.400 caracteres.',
+    maxChars: 3000,
+  },
 };
 
 const WRITER_SYSTEM = `Você é um redator especialista em LinkedIn com profundo conhecimento em marketing pessoal e comunicação executiva. Você cria posts autênticos, engajadores e profissionais que constroem autoridade, conexão genuína e impulsionam o engajamento.
@@ -132,6 +152,8 @@ TOM DESEJADO: ${TONE_MAP[input.tone]}
 
 IDIOMA: ${LANG_MAP[input.language]}
 
+${(['pt-en', 'en-pt'] as Language[]).includes(input.language) ? LENGTH_MAP[input.length].bilingual : LENGTH_MAP[input.length].single}
+
 AUDIÊNCIA ALVO: ${input.audience}
 
 Crie um post que capture a essência desta experiência e ressoe profundamente com a audiência especificada.`,
@@ -155,7 +177,8 @@ export async function runReviewerAgent(draft: string, input: AgentInput): Promis
 CONTEXTO DESTA REVISÃO:
 - Audiência alvo: ${input.audience}
 - Tom desejado: ${TONE_MAP[input.tone]}
-- Configuração de idioma: ${LANG_MAP[input.language]}`,
+- Configuração de idioma: ${LANG_MAP[input.language]}
+- ${(['pt-en', 'en-pt'] as Language[]).includes(input.language) ? LENGTH_MAP[input.length].bilingual : LENGTH_MAP[input.length].single}`,
         cache_control: { type: 'ephemeral' },
       },
     ],
@@ -184,16 +207,21 @@ export async function runFormatterAgent(reviewed: string, input: AgentInput): Pr
     messages: [
       {
         role: 'user',
-        content: `Faça a formatação final deste post para LinkedIn, otimizando para máximo engajamento e impacto visual:\n\n${reviewed}`,
+        content: `Faça a formatação final deste post para LinkedIn, otimizando para máximo engajamento e impacto visual.
+
+${(['pt-en', 'en-pt'] as Language[]).includes(input.language) ? LENGTH_MAP[input.length].bilingual : LENGTH_MAP[input.length].single}
+
+Post para formatar:\n\n${reviewed}`,
       },
     ],
   });
 
   const text = extractText(response.content);
-  if (text.length <= 3000) return text;
+  const limit = LENGTH_MAP[input.length].maxChars;
+  if (text.length <= limit) return text;
 
-  // Safety net: truncate at last complete line under 3000 chars
-  const truncated = text.slice(0, 3000);
+  // Safety net: truncate at last complete line within the target limit
+  const truncated = text.slice(0, limit);
   const lastNewline = truncated.lastIndexOf('\n');
-  return lastNewline > 2500 ? truncated.slice(0, lastNewline).trimEnd() : truncated.trimEnd();
+  return lastNewline > limit * 0.85 ? truncated.slice(0, lastNewline).trimEnd() : truncated.trimEnd();
 }

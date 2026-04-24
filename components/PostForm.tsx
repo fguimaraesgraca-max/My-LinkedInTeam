@@ -5,6 +5,7 @@ import { useDropzone } from 'react-dropzone';
 
 export type Tone = 'executive' | 'friendly' | 'inspiring' | 'educational' | 'celebratory';
 export type Language = 'pt' | 'en' | 'pt-en' | 'en-pt';
+export type Length = 'concise' | 'medium' | 'long';
 
 export interface FormValues {
   title: string;
@@ -12,6 +13,7 @@ export interface FormValues {
   link: string;
   tone: Tone;
   language: Language;
+  length: Length;
   audience: string;
   images: File[];
 }
@@ -36,6 +38,12 @@ const LANGUAGES: { value: Language; label: string; flag: string }[] = [
   { value: 'en-pt', label: 'EN → PT', flag: '🌐' },
 ];
 
+const LENGTHS: { value: Length; label: string; emoji: string; desc: string; chars: string }[] = [
+  { value: 'concise', label: 'Conciso', emoji: '⚡', desc: 'Direto ao ponto', chars: '~800 chars' },
+  { value: 'medium', label: 'Médio', emoji: '📝', desc: 'Equilibrado', chars: '~1.500 chars' },
+  { value: 'long', label: 'Longo', emoji: '📖', desc: 'Detalhado', chars: '~2.500 chars' },
+];
+
 const AUDIENCE_SUGGESTIONS = [
   'CTOs e líderes de tecnologia',
   'Profissionais de RH e gestão de pessoas',
@@ -54,6 +62,7 @@ export default function PostForm({ onGenerate, isGenerating }: Props) {
     link: '',
     tone: 'executive',
     language: 'pt',
+    length: 'medium',
     audience: '',
     images: [],
   });
@@ -200,6 +209,29 @@ export default function PostForm({ onGenerate, isGenerating }: Props) {
                 O post será gerado nos dois idiomas separados por "——"
               </p>
             )}
+          </div>
+
+          {/* Length */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Tamanho do Post</label>
+            <div className="grid grid-cols-3 gap-2">
+              {LENGTHS.map((l) => (
+                <button
+                  key={l.value}
+                  type="button"
+                  onClick={() => set('length', l.value)}
+                  className={`flex flex-col items-center gap-1 p-3 rounded-lg border-2 text-center transition-all ${
+                    values.length === l.value
+                      ? 'border-linkedin-blue bg-linkedin-light shadow-sm'
+                      : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                  }`}
+                >
+                  <span className="text-xl">{l.emoji}</span>
+                  <span className="text-xs font-semibold text-gray-800">{l.label}</span>
+                  <span className="text-[10px] text-gray-500">{l.chars}</span>
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Audience */}

@@ -33,6 +33,7 @@ export default function Home() {
       link: form.link,
       tone: form.tone,
       language: form.language,
+      length: form.length,
       audience: form.audience,
       imageCount: form.images.length,
     };

@@ -13,6 +13,7 @@ export async function POST(request: NextRequest) {
     link: body.link,
     tone: body.tone,
     language: body.language,
+    length: body.length,
     audience: body.audience,
     imageCount: body.imageCount,
   };

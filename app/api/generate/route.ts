@@ -13,6 +13,7 @@ export async function POST(request: NextRequest) {
     link: (data.get('link') as string) || undefined,
     tone: data.get('tone') as AgentInput['tone'],
     language: data.get('language') as AgentInput['language'],
+    length: (data.get('length') as AgentInput['length']) || 'medium',
     audience: data.get('audience') as string,
     imageCount: parseInt((data.get('imageCount') as string) || '0', 10),
   };
