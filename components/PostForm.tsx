@@ -163,21 +163,21 @@ export default function PostForm({ onGenerate, isGenerating }: Props) {
           {/* Tone */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Tom da Comunicação</label>
-            <div className="grid grid-cols-5 gap-2">
+            <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
               {TONES.map((t) => (
                 <button
                   key={t.value}
                   type="button"
                   onClick={() => set('tone', t.value)}
-                  className={`flex flex-col items-center gap-1.5 p-2.5 rounded-lg border-2 text-center transition-all ${
+                  className={`flex flex-col items-center gap-1.5 p-3 rounded-lg border-2 text-center transition-all flex-shrink-0 min-w-[80px] ${
                     values.tone === t.value
                       ? 'border-linkedin-blue bg-linkedin-light shadow-sm'
                       : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
                   }`}
                 >
                   <span className="text-2xl">{t.emoji}</span>
-                  <span className="text-xs font-semibold text-gray-800 leading-tight">{t.label}</span>
-                  <span className="text-[10px] text-gray-500 hidden sm:block">{t.desc}</span>
+                  <span className="text-xs font-semibold text-gray-800 leading-tight whitespace-nowrap">{t.label}</span>
+                  <span className="text-[10px] text-gray-500 whitespace-nowrap">{t.desc}</span>
                 </button>
               ))}
             </div>
