@@ -50,7 +50,9 @@ REGRAS ESSENCIAIS:
 - NÃO use markdown (**negrito**, *itálico*, #headers) — o LinkedIn não renderiza formatação markdown
 - Parágrafos curtos (máx 3 linhas cada) para boa leitura em dispositivos mobile
 - Emojis: use com moderação e intenção (2-5 no total), apenas onde agregam valor visual ou emocional
-- Comprimento: 1.200-2.500 caracteres no texto principal (sem hashtags)
+- LIMITE ABSOLUTO: o post completo não pode ultrapassar 3.000 caracteres — esse é o limite do LinkedIn
+- Posts em UM idioma: máximo 3.000 caracteres no total (texto + hashtags)
+- Posts BILÍNGUES (com separador ——): as DUAS versões somadas + separador devem ter no máximo 3.000 caracteres; escreva cada versão com no máximo 1.400 caracteres
 - Tom autêntico e humano — evite linguagem genérica ou claramente artificial
 - NÃO inicie com "Olá" ou saudações genéricas`;
 
@@ -65,12 +67,13 @@ CHECKLIST COMPLETO DE REVISÃO:
 6. IMPACTO: Fortaleça passagens fracas, elimine redundâncias, intensifique os momentos-chave
 7. CALL-TO-ACTION: Deve ser específico, claro e convidar genuinamente à interação
 8. HASHTAGS: Verifique relevância, popularidade e estratégia das hashtags escolhidas
-9. COMPRIMENTO: Ideal 1.200-2.500 caracteres. Corte o que não agrega valor real.
+9. COMPRIMENTO E LIMITE: O post completo DEVE ter no máximo 3.000 caracteres (limite do LinkedIn). Para posts bilíngues, cada versão deve ter no máximo 1.400 caracteres — corte o que não agrega valor real para respeitar esse limite.
 10. ESTRUTURA VISUAL: Verifique espaçamento e organização para boa leitura
 
 REGRAS:
 - NÃO use markdown
 - Se bilíngue (com separador ——), revise AMBAS as versões com igual cuidado e profundidade
+- Se o post ultrapassar 3.000 caracteres, corte sem hesitar — o limite é inegociável
 - Retorne APENAS o post revisado e melhorado, sem comentários ou explicações sobre as mudanças`;
 
 const FORMATTER_SYSTEM = `Você é um especialista em formatação de conteúdo para LinkedIn com profundo conhecimento do algoritmo da plataforma, psicologia de leitura digital e melhores práticas de engajamento.
@@ -86,7 +89,9 @@ REGRAS DE FORMATAÇÃO PARA MÁXIMO ENGAJAMENTO:
 8. CTA CLARO: A chamada para ação deve ser a penúltima seção, logo antes das hashtags
 
 OTIMIZAÇÕES FINAIS:
-- Verifique se o post tem no máximo 3.000 caracteres (limite do LinkedIn)
+- LIMITE OBRIGATÓRIO: o post completo deve ter no máximo 3.000 caracteres — conte todos os caracteres incluindo espaços, emojis e o separador —— em posts bilíngues
+- Para posts bilíngues: cada versão deve ter no máximo 1.400 caracteres; se necessário, corte partes menos relevantes de ambas as versões proporcionalmente
+- Se o post ultrapassar 3.000 caracteres, corte o suficiente para ficar abaixo do limite — sem exceções
 - Confirme que o hook é realmente impactante e não genérico
 - Certifique-se que o espaçamento está correto e consistente
 - Valide que as hashtags estão todas na última linha
@@ -184,5 +189,11 @@ export async function runFormatterAgent(reviewed: string, input: AgentInput): Pr
     ],
   });
 
-  return extractText(response.content);
+  const text = extractText(response.content);
+  if (text.length <= 3000) return text;
+
+  // Safety net: truncate at last complete line under 3000 chars
+  const truncated = text.slice(0, 3000);
+  const lastNewline = truncated.lastIndexOf('\n');
+  return lastNewline > 2500 ? truncated.slice(0, lastNewline).trimEnd() : truncated.trimEnd();
 }
