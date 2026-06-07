@@ -84,8 +84,8 @@ export default function Home() {
       setFinalPost(formatted);
       setTimeout(() => resultRef.current?.scrollIntoView({ behavior: 'smooth' }), 200);
 
-      // Generate carousel PDF if images were uploaded
-      if (form.images.length > 0) {
+      // Generate carousel PDF only if images uploaded and toggle enabled
+      if (form.images.length > 0 && form.generateCarousel) {
         const cfd = new FormData();
         form.images.forEach((img) => cfd.append('images', img));
         const cres = await fetch('/api/carousel', { method: 'POST', body: cfd });

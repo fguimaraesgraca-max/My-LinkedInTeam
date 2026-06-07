@@ -16,6 +16,7 @@ export interface FormValues {
   length: Length;
   audience: string;
   images: File[];
+  generateCarousel: boolean;
 }
 
 interface Props {
@@ -65,6 +66,7 @@ export default function PostForm({ onGenerate, isGenerating }: Props) {
     length: 'medium',
     audience: '',
     images: [],
+    generateCarousel: true,
   });
 
   const onDrop = useCallback((accepted: File[]) => {
@@ -350,6 +352,35 @@ export default function PostForm({ onGenerate, isGenerating }: Props) {
                 </div>
               ))}
             </div>
+
+            {/* Carousel toggle */}
+            <button
+              type="button"
+              onClick={() => set('generateCarousel', !values.generateCarousel)}
+              className={`mt-3 w-full flex items-center justify-between px-4 py-3 rounded-xl border-2 transition-all ${
+                values.generateCarousel
+                  ? 'border-linkedin-blue bg-linkedin-light'
+                  : 'border-gray-200 bg-gray-50'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <span className="text-xl">📄</span>
+                <div className="text-left">
+                  <p className={`text-sm font-semibold leading-tight ${values.generateCarousel ? 'text-linkedin-blue' : 'text-gray-600'}`}>
+                    Gerar PDF do carrossel
+                  </p>
+                  <p className="text-[11px] text-gray-500 leading-tight">
+                    {values.generateCarousel
+                      ? 'PDF será gerado para download após o post'
+                      : 'Imagens usadas só como contexto para o post'}
+                  </p>
+                </div>
+              </div>
+              {/* Toggle pill */}
+              <div className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${values.generateCarousel ? 'bg-linkedin-blue' : 'bg-gray-300'}`}>
+                <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${values.generateCarousel ? 'translate-x-5' : 'translate-x-0.5'}`} />
+              </div>
+            </button>
           </div>
         )}
       </div>
