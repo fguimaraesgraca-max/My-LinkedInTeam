@@ -1,12 +1,23 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Toaster, toast } from 'react-hot-toast';
 import PostForm, { FormValues } from '@/components/PostForm';
 import AgentProgress, { AgentState } from '@/components/AgentProgress';
 import PostResult from '@/components/PostResult';
+import PostHistory from '@/components/PostHistory';
+import {
+  HistoryEntry,
+  loadHistory,
+  saveToHistory,
+  removeFromHistory,
+  blobUrlToBase64,
+} from '@/lib/history';
 
 export default function Home() {
+  const [tab, setTab] = useState<'create' | 'history'>('create');
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
+
   const [agentState, setAgentState] = useState<AgentState>({
     writer: 'idle',
     reviewer: 'idle',
@@ -18,6 +29,17 @@ export default function Home() {
   const [carouselUrl, setCarouselUrl] = useState('');
   const [lastForm, setLastForm] = useState<FormValues | null>(null);
   const resultRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setHistory(loadHistory());
+  }, []);
+
+  const refreshHistory = () => setHistory(loadHistory());
+
+  const handleDelete = (id: string) => {
+    removeFromHistory(id);
+    refreshHistory();
+  };
 
   const generate = async (form: FormValues) => {
     setIsGenerating(true);
@@ -85,15 +107,33 @@ export default function Home() {
       setTimeout(() => resultRef.current?.scrollIntoView({ behavior: 'smooth' }), 200);
 
       // Generate carousel PDF only if images uploaded and toggle enabled
+      let localCarouselUrl = '';
       if (form.images.length > 0 && form.generateCarousel) {
         const cfd = new FormData();
         form.images.forEach((img) => cfd.append('images', img));
         const cres = await fetch('/api/carousel', { method: 'POST', body: cfd });
         if (cres.ok) {
           const blob = await cres.blob();
-          setCarouselUrl(URL.createObjectURL(blob));
+          localCarouselUrl = URL.createObjectURL(blob);
+          setCarouselUrl(localCarouselUrl);
         }
       }
+
+      // Auto-save to history
+      const pdfBase64 = localCarouselUrl
+        ? await blobUrlToBase64(localCarouselUrl)
+        : undefined;
+
+      saveToHistory({
+        title: form.title,
+        tone: form.tone,
+        language: form.language,
+        length: form.length,
+        text: formatted,
+        pdfBase64,
+      });
+      refreshHistory();
+      toast.success('Salvo no Histórico', { duration: 2000, icon: '🗂' });
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Erro desconhecido';
       toast.error(`Algo deu errado: ${msg}`, { duration: 6000 });
@@ -129,47 +169,86 @@ export default function Home() {
             </span>
           </div>
         </div>
+
+        {/* Tabs */}
+        <div className="max-w-3xl mx-auto flex border-t border-gray-100">
+          <button
+            onClick={() => setTab('create')}
+            className={`flex-1 py-2.5 text-sm font-semibold transition-colors relative ${
+              tab === 'create'
+                ? 'text-linkedin-blue'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            ✍️ Criar Post
+            {tab === 'create' && (
+              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-linkedin-blue rounded-t-full" />
+            )}
+          </button>
+          <button
+            onClick={() => setTab('history')}
+            className={`flex-1 py-2.5 text-sm font-semibold transition-colors relative flex items-center justify-center gap-1.5 ${
+              tab === 'history'
+                ? 'text-linkedin-blue'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            🗂 Histórico
+            {history.length > 0 && (
+              <span className="bg-linkedin-blue text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full leading-none">
+                {history.length}
+              </span>
+            )}
+            {tab === 'history' && (
+              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-linkedin-blue rounded-t-full" />
+            )}
+          </button>
+        </div>
       </header>
 
       <div className="max-w-3xl mx-auto px-4 py-6 space-y-5">
-        {/* Intro */}
-        {!isGenerating && !finalPost && (
-          <div className="bg-gradient-to-r from-linkedin-blue to-linkedin-dark rounded-xl p-5 text-white">
-            <h2 className="text-lg font-bold mb-1">
-              Olá! Sua equipe IA está pronta 🤝
-            </h2>
-            <p className="text-sm text-white/85 leading-relaxed">
-              Preencha as informações abaixo e nossa equipe de três agentes — Redator, Revisor e
-              Formatador — criará um post profissional e personalizado para o seu LinkedIn.
-            </p>
-            <div className="flex gap-3 mt-3">
-              {['✍️ Redator', '🔍 Revisor', '✨ Formatador'].map((agent) => (
-                <span
-                  key={agent}
-                  className="text-xs bg-white/20 text-white px-2.5 py-1 rounded-full font-medium"
-                >
-                  {agent}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
+        {tab === 'history' ? (
+          <PostHistory entries={history} onDelete={handleDelete} />
+        ) : (
+          <>
+            {/* Intro */}
+            {!isGenerating && !finalPost && (
+              <div className="bg-gradient-to-r from-linkedin-blue to-linkedin-dark rounded-xl p-5 text-white">
+                <h2 className="text-lg font-bold mb-1">Olá! Sua equipe IA está pronta 🤝</h2>
+                <p className="text-sm text-white/85 leading-relaxed">
+                  Preencha as informações abaixo e nossa equipe de três agentes — Redator, Revisor e
+                  Formatador — criará um post profissional e personalizado para o seu LinkedIn.
+                </p>
+                <div className="flex gap-3 mt-3">
+                  {['✍️ Redator', '🔍 Revisor', '✨ Formatador'].map((agent) => (
+                    <span
+                      key={agent}
+                      className="text-xs bg-white/20 text-white px-2.5 py-1 rounded-full font-medium"
+                    >
+                      {agent}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
 
-        <PostForm onGenerate={generate} isGenerating={isGenerating} />
+            <PostForm onGenerate={generate} isGenerating={isGenerating} />
 
-        {(isGenerating || agentState.writer !== 'idle' || finalPost) && (
-          <AgentProgress state={agentState} />
-        )}
+            {(isGenerating || agentState.writer !== 'idle' || finalPost) && (
+              <AgentProgress state={agentState} />
+            )}
 
-        {finalPost && (
-          <div ref={resultRef}>
-            <PostResult
-              post={finalPost}
-              carouselUrl={carouselUrl}
-              imageCount={images.length}
-              onRegenerate={lastForm ? () => generate(lastForm) : undefined}
-            />
-          </div>
+            {finalPost && (
+              <div ref={resultRef}>
+                <PostResult
+                  post={finalPost}
+                  carouselUrl={carouselUrl}
+                  imageCount={images.length}
+                  onRegenerate={lastForm ? () => generate(lastForm!) : undefined}
+                />
+              </div>
+            )}
+          </>
         )}
       </div>
 
