@@ -16,6 +16,7 @@ export interface AgentInput {
   length: Length;
   audience: string;
   imageCount?: number;
+  variant?: 'standard' | 'alternative';
 }
 
 const TONE_MAP: Record<Tone, string> = {
@@ -155,7 +156,7 @@ IDIOMA: ${LANG_MAP[input.language]}
 ${(['pt-en', 'en-pt'] as Language[]).includes(input.language) ? LENGTH_MAP[input.length].bilingual : LENGTH_MAP[input.length].single}
 
 AUDIÊNCIA ALVO: ${input.audience}
-
+${input.variant === 'alternative' ? '\nABORDAGEM ALTERNATIVA OBRIGATÓRIA: Crie uma versão com ângulo narrativo completamente diferente — outro hook, outra estrutura, outra perspectiva do mesmo tema. Surpreenda com uma abordagem que ninguém esperaria.' : ''}
 Crie um post que capture a essência desta experiência e ressoe profundamente com a audiência especificada.`,
       },
     ],

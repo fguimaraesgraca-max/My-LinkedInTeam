@@ -16,6 +16,7 @@ export async function POST(request: NextRequest) {
     length: body.length,
     audience: body.audience,
     imageCount: body.imageCount,
+    variant: body.variant,
   };
 
   try {

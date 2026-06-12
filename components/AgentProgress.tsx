@@ -38,28 +38,36 @@ const AGENTS = [
 
 interface Props {
   state: AgentState;
+  dual?: boolean;
 }
 
-export default function AgentProgress({ state }: Props) {
+export default function AgentProgress({ state, dual }: Props) {
   const allDone = state.writer === 'done' && state.reviewer === 'done' && state.formatter === 'done';
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-      <div className="flex items-center gap-2 mb-4">
-        <div className="flex gap-1">
-          {[0, 1, 2].map((i) => (
-            <div
-              key={i}
-              className={`w-2 h-2 rounded-full ${
-                allDone ? 'bg-green-500' : 'bg-linkedin-blue animate-pulse'
-              }`}
-              style={{ animationDelay: `${i * 200}ms` }}
-            />
-          ))}
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <div className="flex gap-1">
+            {[0, 1, 2].map((i) => (
+              <div
+                key={i}
+                className={`w-2 h-2 rounded-full ${
+                  allDone ? 'bg-green-500' : 'bg-linkedin-blue animate-pulse'
+                }`}
+                style={{ animationDelay: `${i * 200}ms` }}
+              />
+            ))}
+          </div>
+          <h2 className="text-sm font-semibold text-gray-900">
+            {allDone ? 'Equipe concluiu o trabalho!' : 'Equipe trabalhando no seu post...'}
+          </h2>
         </div>
-        <h2 className="text-sm font-semibold text-gray-900">
-          {allDone ? 'Equipe concluiu o trabalho!' : 'Equipe trabalhando no seu post...'}
-        </h2>
+        {dual && !allDone && (
+          <span className="text-[11px] font-bold text-linkedin-blue bg-linkedin-light px-2 py-1 rounded-full">
+            2 opções em paralelo
+          </span>
+        )}
       </div>
 
       <div className="space-y-3">

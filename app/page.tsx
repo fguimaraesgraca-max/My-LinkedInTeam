@@ -1,33 +1,70 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Toaster, toast } from 'react-hot-toast';
 import PostForm, { FormValues } from '@/components/PostForm';
 import AgentProgress, { AgentState } from '@/components/AgentProgress';
 import PostResult from '@/components/PostResult';
+import PostHistory from '@/components/PostHistory';
+import {
+  HistoryEntry,
+  loadHistory,
+  saveToHistory,
+  removeFromHistory,
+  blobUrlToBase64,
+} from '@/lib/history';
+
+async function callAgent(endpoint: string, body: object) {
+  const res = await fetch(endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as { error?: string }).error || `${endpoint} falhou (${res.status})`);
+  }
+  return res.json();
+}
 
 export default function Home() {
+  const [tab, setTab] = useState<'create' | 'history'>('create');
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
+
   const [agentState, setAgentState] = useState<AgentState>({
     writer: 'idle',
     reviewer: 'idle',
     formatter: 'idle',
   });
-  const [finalPost, setFinalPost] = useState('');
+  const [post1, setPost1] = useState('');
+  const [post2, setPost2] = useState('');
+  const [selectedOption, setSelectedOption] = useState<1 | 2>(1);
   const [isGenerating, setIsGenerating] = useState(false);
   const [images, setImages] = useState<File[]>([]);
   const [carouselUrl, setCarouselUrl] = useState('');
   const [lastForm, setLastForm] = useState<FormValues | null>(null);
   const resultRef = useRef<HTMLDivElement>(null);
 
+  useEffect(() => { setHistory(loadHistory()); }, []);
+
+  const refreshHistory = () => setHistory(loadHistory());
+
+  const handleDelete = (id: string) => {
+    removeFromHistory(id);
+    refreshHistory();
+  };
+
   const generate = async (form: FormValues) => {
     setIsGenerating(true);
-    setFinalPost('');
+    setPost1('');
+    setPost2('');
     setCarouselUrl('');
     setImages(form.images);
     setLastForm(form);
+    setSelectedOption(1);
     setAgentState({ writer: 'idle', reviewer: 'idle', formatter: 'idle' });
 
-    const body = {
+    const base = {
       title: form.title,
       description: form.description,
       link: form.link,
@@ -39,61 +76,60 @@ export default function Home() {
     };
 
     try {
-      // Writer agent
+      // Writers — both in parallel
       setAgentState((prev) => ({ ...prev, writer: 'working' }));
-      const writeRes = await fetch('/api/agent/write', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      if (!writeRes.ok) {
-        const err = await writeRes.json().catch(() => ({}));
-        throw new Error(err?.error || `Redator falhou (${writeRes.status})`);
-      }
-      const { draft } = await writeRes.json();
-      setAgentState((prev) => ({ ...prev, writer: 'done', writerContent: draft }));
+      const [w1, w2] = await Promise.all([
+        callAgent('/api/agent/write', base),
+        callAgent('/api/agent/write', { ...base, variant: 'alternative' }),
+      ]);
+      setAgentState((prev) => ({ ...prev, writer: 'done', writerContent: w1.draft }));
 
-      // Reviewer agent
+      // Reviewers — both in parallel
       setAgentState((prev) => ({ ...prev, reviewer: 'working' }));
-      const reviewRes = await fetch('/api/agent/review', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...body, draft }),
-      });
-      if (!reviewRes.ok) {
-        const err = await reviewRes.json().catch(() => ({}));
-        throw new Error(err?.error || `Revisor falhou (${reviewRes.status})`);
-      }
-      const { reviewed } = await reviewRes.json();
-      setAgentState((prev) => ({ ...prev, reviewer: 'done', reviewerContent: reviewed }));
+      const [r1, r2] = await Promise.all([
+        callAgent('/api/agent/review', { ...base, draft: w1.draft }),
+        callAgent('/api/agent/review', { ...base, draft: w2.draft }),
+      ]);
+      setAgentState((prev) => ({ ...prev, reviewer: 'done', reviewerContent: r1.reviewed }));
 
-      // Formatter agent
+      // Formatters — both in parallel
       setAgentState((prev) => ({ ...prev, formatter: 'working' }));
-      const formatRes = await fetch('/api/agent/format', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...body, reviewed }),
-      });
-      if (!formatRes.ok) {
-        const err = await formatRes.json().catch(() => ({}));
-        throw new Error(err?.error || `Formatador falhou (${formatRes.status})`);
-      }
-      const { formatted } = await formatRes.json();
-      setAgentState((prev) => ({ ...prev, formatter: 'done', formatterContent: formatted }));
+      const [f1, f2] = await Promise.all([
+        callAgent('/api/agent/format', { ...base, reviewed: r1.reviewed }),
+        callAgent('/api/agent/format', { ...base, reviewed: r2.reviewed }),
+      ]);
+      setAgentState((prev) => ({ ...prev, formatter: 'done', formatterContent: f1.formatted }));
 
-      setFinalPost(formatted);
+      setPost1(f1.formatted);
+      setPost2(f2.formatted);
       setTimeout(() => resultRef.current?.scrollIntoView({ behavior: 'smooth' }), 200);
 
-      // Generate carousel PDF only if images uploaded and toggle enabled
+      // Carousel PDF (one for both options, since images are the same)
+      let localCarouselUrl = '';
       if (form.images.length > 0 && form.generateCarousel) {
-        const cfd = new FormData();
-        form.images.forEach((img) => cfd.append('images', img));
-        const cres = await fetch('/api/carousel', { method: 'POST', body: cfd });
-        if (cres.ok) {
-          const blob = await cres.blob();
-          setCarouselUrl(URL.createObjectURL(blob));
+        try {
+          const cfd = new FormData();
+          form.images.forEach((img) => cfd.append('images', img));
+          const cres = await fetch('/api/carousel', { method: 'POST', body: cfd });
+          if (cres.ok) {
+            const blob = await cres.blob();
+            localCarouselUrl = URL.createObjectURL(blob);
+            setCarouselUrl(localCarouselUrl);
+          } else {
+            const errBody = await cres.json().catch(() => ({}));
+            toast.error(`PDF falhou: ${(errBody as {error?:string}).error ?? cres.status}`, { duration: 5000 });
+          }
+        } catch (carouselErr) {
+          toast.error(`Erro ao gerar PDF: ${carouselErr instanceof Error ? carouselErr.message : 'desconhecido'}`, { duration: 5000 });
         }
       }
+
+      // Save both options to history (PDF only on option 1 to avoid duplicate storage)
+      const pdfBase64 = localCarouselUrl ? await blobUrlToBase64(localCarouselUrl) : undefined;
+      saveToHistory({ title: `${form.title} — Opção 1`, tone: form.tone, language: form.language, length: form.length, text: f1.formatted, pdfBase64 });
+      saveToHistory({ title: `${form.title} — Opção 2`, tone: form.tone, language: form.language, length: form.length, text: f2.formatted });
+      refreshHistory();
+      toast.success('2 opções salvas no Histórico', { duration: 2500, icon: '🗂' });
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Erro desconhecido';
       toast.error(`Algo deu errado: ${msg}`, { duration: 6000 });
@@ -102,6 +138,8 @@ export default function Home() {
       setIsGenerating(false);
     }
   };
+
+  const activePost = selectedOption === 1 ? post1 : post2;
 
   return (
     <main className="min-h-screen bg-linkedin-bg">
@@ -121,7 +159,6 @@ export default function Home() {
               <p className="text-[11px] text-gray-500 leading-tight">Equipe IA para posts profissionais</p>
             </div>
           </div>
-
           <div className="hidden sm:flex items-center gap-2 text-xs text-gray-500">
             <span className="flex items-center gap-1">
               <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
@@ -129,47 +166,101 @@ export default function Home() {
             </span>
           </div>
         </div>
+
+        {/* Tabs */}
+        <div className="max-w-3xl mx-auto flex border-t border-gray-100">
+          {(['create', 'history'] as const).map((t) => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className={`flex-1 py-2.5 text-sm font-semibold transition-colors relative flex items-center justify-center gap-1.5 ${
+                tab === t ? 'text-linkedin-blue' : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              {t === 'create' ? '✍️ Criar Post' : '🗂 Histórico'}
+              {t === 'history' && history.length > 0 && (
+                <span className="bg-linkedin-blue text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full leading-none">
+                  {history.length}
+                </span>
+              )}
+              {tab === t && (
+                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-linkedin-blue rounded-t-full" />
+              )}
+            </button>
+          ))}
+        </div>
       </header>
 
       <div className="max-w-3xl mx-auto px-4 py-6 space-y-5">
-        {/* Intro */}
-        {!isGenerating && !finalPost && (
-          <div className="bg-gradient-to-r from-linkedin-blue to-linkedin-dark rounded-xl p-5 text-white">
-            <h2 className="text-lg font-bold mb-1">
-              Olá! Sua equipe IA está pronta 🤝
-            </h2>
-            <p className="text-sm text-white/85 leading-relaxed">
-              Preencha as informações abaixo e nossa equipe de três agentes — Redator, Revisor e
-              Formatador — criará um post profissional e personalizado para o seu LinkedIn.
-            </p>
-            <div className="flex gap-3 mt-3">
-              {['✍️ Redator', '🔍 Revisor', '✨ Formatador'].map((agent) => (
-                <span
-                  key={agent}
-                  className="text-xs bg-white/20 text-white px-2.5 py-1 rounded-full font-medium"
-                >
-                  {agent}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
+        {tab === 'history' ? (
+          <PostHistory entries={history} onDelete={handleDelete} />
+        ) : (
+          <>
+            {/* Intro banner */}
+            {!isGenerating && !post1 && (
+              <div className="bg-gradient-to-r from-linkedin-blue to-linkedin-dark rounded-xl p-5 text-white">
+                <h2 className="text-lg font-bold mb-1">Olá! Sua equipe IA está pronta 🤝</h2>
+                <p className="text-sm text-white/85 leading-relaxed">
+                  Preencha as informações abaixo. Sua equipe criará{' '}
+                  <span className="font-bold underline decoration-white/50">2 opções de post</span>{' '}
+                  em paralelo para você escolher a melhor.
+                </p>
+                <div className="flex gap-3 mt-3">
+                  {['✍️ Redator', '🔍 Revisor', '✨ Formatador'].map((a) => (
+                    <span key={a} className="text-xs bg-white/20 text-white px-2.5 py-1 rounded-full font-medium">
+                      {a}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
 
-        <PostForm onGenerate={generate} isGenerating={isGenerating} />
+            <PostForm onGenerate={generate} isGenerating={isGenerating} />
 
-        {(isGenerating || agentState.writer !== 'idle' || finalPost) && (
-          <AgentProgress state={agentState} />
-        )}
+            {(isGenerating || agentState.writer !== 'idle' || post1) && (
+              <AgentProgress state={agentState} dual />
+            )}
 
-        {finalPost && (
-          <div ref={resultRef}>
-            <PostResult
-              post={finalPost}
-              carouselUrl={carouselUrl}
-              imageCount={images.length}
-              onRegenerate={lastForm ? () => generate(lastForm) : undefined}
-            />
-          </div>
+            {(post1 || post2) && (
+              <div ref={resultRef} className="space-y-4">
+                {/* Option selector */}
+                <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex">
+                  {([1, 2] as const).map((opt) => (
+                    <button
+                      key={opt}
+                      onClick={() => setSelectedOption(opt)}
+                      className={`flex-1 py-3.5 text-sm font-bold transition-all flex items-center justify-center gap-2 ${
+                        selectedOption === opt
+                          ? 'bg-linkedin-blue text-white shadow-sm'
+                          : 'text-gray-500 hover:bg-gray-50'
+                      }`}
+                    >
+                      {selectedOption === opt && (
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                        </svg>
+                      )}
+                      Opção {opt}
+                      {opt === 2 && (
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
+                          selectedOption === 2 ? 'bg-white/20 text-white' : 'bg-linkedin-light text-linkedin-blue'
+                        }`}>
+                          alternativa
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+
+                <PostResult
+                  post={activePost}
+                  carouselUrl={carouselUrl}
+                  imageCount={images.length}
+                  onRegenerate={lastForm ? () => generate(lastForm!) : undefined}
+                />
+              </div>
+            )}
+          </>
         )}
       </div>
 
