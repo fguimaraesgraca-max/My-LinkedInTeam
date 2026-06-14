@@ -1,9 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-// NextResponse imported for error responses below
 import { PDFDocument } from 'pdf-lib';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
+
+function detectImageType(bytes: Uint8Array): 'jpeg' | 'png' | null {
+  if (bytes.length < 4) return null;
+  if (bytes[0] === 0xFF && bytes[1] === 0xD8 && bytes[2] === 0xFF) return 'jpeg';
+  if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4E && bytes[3] === 0x47) return 'png';
+  return null;
+}
 
 export async function POST(request: NextRequest) {
   const data = await request.formData();
@@ -20,17 +26,25 @@ export async function POST(request: NextRequest) {
     const buffer = await file.arrayBuffer();
     const bytes = new Uint8Array(buffer);
 
+    // Detect by magic bytes first (more reliable than MIME type on mobile)
+    const detected = detectImageType(bytes);
+    const mimeHint = file.type === 'image/png' ? 'png' : 'jpeg';
+    const imageType = detected ?? mimeHint;
+
     let embedded;
     try {
-      if (file.type === 'image/jpeg' || file.type === 'image/jpg') {
-        embedded = await pdfDoc.embedJpg(bytes);
-      } else if (file.type === 'image/png') {
-        embedded = await pdfDoc.embedPng(bytes);
-      } else {
+      embedded = imageType === 'png'
+        ? await pdfDoc.embedPng(bytes)
+        : await pdfDoc.embedJpg(bytes);
+    } catch {
+      // Fallback: try the other format
+      try {
+        embedded = imageType === 'png'
+          ? await pdfDoc.embedJpg(bytes)
+          : await pdfDoc.embedPng(bytes);
+      } catch {
         continue;
       }
-    } catch {
-      continue;
     }
 
     const { width, height } = embedded;
