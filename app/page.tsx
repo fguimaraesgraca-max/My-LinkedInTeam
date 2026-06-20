@@ -11,7 +11,7 @@ import {
   loadHistory,
   saveToHistory,
   removeFromHistory,
-  blobUrlToBase64,
+  savePdfToIdb,
 } from '@/lib/history';
 
 async function callAgent(endpoint: string, body: object) {
@@ -40,6 +40,7 @@ export default function Home() {
   const [post2, setPost2] = useState('');
   const [selectedOption, setSelectedOption] = useState<1 | 2>(1);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [images, setImages] = useState<File[]>([]);
   const [carouselUrl, setCarouselUrl] = useState('');
   const [lastForm, setLastForm] = useState<FormValues | null>(null);
@@ -105,12 +106,11 @@ export default function Home() {
       setTimeout(() => resultRef.current?.scrollIntoView({ behavior: 'smooth' }), 200);
 
       // Carousel PDF — generated client-side (no server request, no size limits)
-      let localCarouselUrl = '';
       if (form.images.length > 0 && form.generateCarousel) {
         try {
           const { generateCarouselPdf } = await import('@/lib/generateCarouselPdf');
-          localCarouselUrl = await generateCarouselPdf(form.images);
-          setCarouselUrl(localCarouselUrl);
+          const url = await generateCarouselPdf(form.images);
+          setCarouselUrl(url);
         } catch (carouselErr) {
           toast.error(
             `Erro ao gerar PDF: ${carouselErr instanceof Error ? carouselErr.message : 'desconhecido'}`,
@@ -118,19 +118,37 @@ export default function Home() {
           );
         }
       }
-
-      // Save both options to history (PDF only on option 1 to avoid duplicate storage)
-      const pdfBase64 = localCarouselUrl ? await blobUrlToBase64(localCarouselUrl) : undefined;
-      saveToHistory({ title: `${form.title} — Opção 1`, tone: form.tone, language: form.language, length: form.length, text: f1.formatted, pdfBase64 });
-      saveToHistory({ title: `${form.title} — Opção 2`, tone: form.tone, language: form.language, length: form.length, text: f2.formatted });
-      refreshHistory();
-      toast.success('2 opções salvas no Histórico', { duration: 2500, icon: '🗂' });
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Erro desconhecido';
       toast.error(`Algo deu errado: ${msg}`, { duration: 6000 });
       setAgentState({ writer: 'idle', reviewer: 'idle', formatter: 'idle' });
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  const handleSaveToHistory = async () => {
+    if (!lastForm || isSaving) return;
+    setIsSaving(true);
+    try {
+      const activePost = selectedOption === 1 ? post1 : post2;
+      const id = saveToHistory({
+        title: `${lastForm.title} — Opção ${selectedOption}`,
+        tone: lastForm.tone,
+        language: lastForm.language,
+        length: lastForm.length,
+        text: activePost,
+        hasPdf: !!carouselUrl,
+      });
+      if (carouselUrl) {
+        await savePdfToIdb(id, carouselUrl);
+      }
+      refreshHistory();
+      toast.success(`Opção ${selectedOption} salva no Histórico! 🗂`, { duration: 2500 });
+    } catch {
+      toast.error('Erro ao salvar. Tente novamente.');
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -216,7 +234,7 @@ export default function Home() {
               <AgentProgress state={agentState} dual />
             )}
 
-            {(post1 || post2) && (
+            {(post1 || post2) && !isGenerating && (
               <div ref={resultRef} className="space-y-4">
                 {/* Option selector */}
                 <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex">
@@ -253,6 +271,35 @@ export default function Home() {
                   imageCount={images.length}
                   onRegenerate={lastForm ? () => generate(lastForm!) : undefined}
                 />
+
+                {/* Save final version */}
+                <button
+                  onClick={handleSaveToHistory}
+                  disabled={isSaving}
+                  className="w-full py-4 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all border-2 border-green-600 text-green-700 bg-green-50 hover:bg-green-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isSaving ? (
+                    <>
+                      <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                      </svg>
+                      Salvando...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                      Usar Opção {selectedOption} — Salvar no Histórico
+                      {carouselUrl && (
+                        <span className="text-[11px] bg-green-200 text-green-800 px-2 py-0.5 rounded-full font-bold ml-1">
+                          + PDF
+                        </span>
+                      )}
+                    </>
+                  )}
+                </button>
               </div>
             )}
           </>

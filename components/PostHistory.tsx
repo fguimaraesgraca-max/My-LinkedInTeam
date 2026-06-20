@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import toast from 'react-hot-toast';
-import { HistoryEntry } from '@/lib/history';
+import { HistoryEntry, getPdfBlobUrl } from '@/lib/history';
 
 const TONE_LABELS: Record<string, string> = {
   executive: '💼 Executivo',
@@ -36,6 +36,7 @@ function HistoryCard({
   const [offsetX, setOffsetX] = useState(0);
   const [swiping, setSwiping] = useState(false);
   const [removing, setRemoving] = useState(false);
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
 
   const triggerDelete = () => {
     setRemoving(true);
@@ -71,14 +72,37 @@ function HistoryCard({
     }
   };
 
-  const downloadPdf = () => {
-    if (!entry.pdfBase64) return;
-    const a = document.createElement('a');
-    a.href = entry.pdfBase64;
-    a.download = `linkedin-carousel-${entry.id}.pdf`;
-    a.click();
-    toast.success('PDF baixado!', { duration: 2000 });
+  const downloadPdf = async () => {
+    setDownloadingPdf(true);
+    try {
+      let url: string | undefined;
+
+      if (entry.hasPdf) {
+        url = await getPdfBlobUrl(entry.id);
+      } else if (entry.pdfBase64) {
+        url = entry.pdfBase64;
+      }
+
+      if (!url) {
+        toast.error('PDF não encontrado. Pode ter sido apagado ao limpar o app.');
+        return;
+      }
+
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `linkedin-carousel-${entry.id}.pdf`;
+      a.click();
+
+      if (entry.hasPdf) URL.revokeObjectURL(url);
+      toast.success('PDF baixado!', { duration: 2000 });
+    } catch {
+      toast.error('Erro ao baixar o PDF.');
+    } finally {
+      setDownloadingPdf(false);
+    }
   };
+
+  const hasPdfDownload = entry.hasPdf || !!entry.pdfBase64;
 
   const dateStr = new Date(entry.createdAt).toLocaleDateString('pt-BR', {
     day: '2-digit',
@@ -95,7 +119,7 @@ function HistoryCard({
       className="relative overflow-hidden rounded-xl"
       style={{
         opacity: removing ? 0 : 1,
-        maxHeight: removing ? 0 : '400px',
+        maxHeight: removing ? 0 : '500px',
         marginBottom: removing ? 0 : undefined,
         transition: removing ? 'all 0.22s ease' : undefined,
       }}
@@ -146,7 +170,7 @@ function HistoryCard({
                   {label}
                 </span>
               ))}
-            {entry.pdfBase64 && (
+            {hasPdfDownload && (
               <span className="text-[10px] bg-blue-50 text-linkedin-blue px-2 py-0.5 rounded-full font-medium">
                 📄 PDF
               </span>
@@ -169,14 +193,22 @@ function HistoryCard({
               </svg>
               Copiar Post
             </button>
-            {entry.pdfBase64 && (
+            {hasPdfDownload && (
               <button
                 onClick={downloadPdf}
-                className="flex-1 flex items-center justify-center gap-1.5 py-2.5 border-2 border-linkedin-blue text-linkedin-blue hover:bg-linkedin-light rounded-lg text-xs font-bold transition-colors"
+                disabled={downloadingPdf}
+                className="flex-1 flex items-center justify-center gap-1.5 py-2.5 border-2 border-linkedin-blue text-linkedin-blue hover:bg-linkedin-light rounded-lg text-xs font-bold transition-colors disabled:opacity-50"
               >
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                </svg>
+                {downloadingPdf ? (
+                  <svg className="animate-spin w-3.5 h-3.5" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                ) : (
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                )}
                 Baixar PDF
               </button>
             )}
@@ -202,7 +234,7 @@ export default function PostHistory({ entries, onDelete }: Props) {
           </svg>
         </div>
         <p className="text-sm font-semibold text-gray-500">Nenhuma criação salva ainda</p>
-        <p className="text-xs text-gray-400 mt-1">Seus posts aparecerão aqui automaticamente</p>
+        <p className="text-xs text-gray-400 mt-1">Seus posts aparecerão aqui após você salvar</p>
       </div>
     );
   }

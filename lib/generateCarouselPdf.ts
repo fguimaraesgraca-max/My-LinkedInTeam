@@ -1,6 +1,6 @@
 'use client';
 
-import { PDFDocument } from 'pdf-lib';
+import { PDFDocument, rgb } from 'pdf-lib';
 
 async function fileToBytes(file: File): Promise<Uint8Array> {
   return new Promise((resolve, reject) => {
@@ -39,6 +39,10 @@ export async function generateCarouselPdf(files: File[]): Promise<string> {
     const { width, height } = embedded;
     const scale = Math.min(PAGE / width, PAGE / height);
     const page = pdfDoc.addPage([PAGE, PAGE]);
+
+    // Black background
+    page.drawRectangle({ x: 0, y: 0, width: PAGE, height: PAGE, color: rgb(0, 0, 0) });
+
     page.drawImage(embedded, {
       x: (PAGE - width * scale) / 2,
       y: (PAGE - height * scale) / 2,
