@@ -104,23 +104,18 @@ export default function Home() {
       setPost2(f2.formatted);
       setTimeout(() => resultRef.current?.scrollIntoView({ behavior: 'smooth' }), 200);
 
-      // Carousel PDF (one for both options, since images are the same)
+      // Carousel PDF — generated client-side (no server request, no size limits)
       let localCarouselUrl = '';
       if (form.images.length > 0 && form.generateCarousel) {
         try {
-          const cfd = new FormData();
-          form.images.forEach((img) => cfd.append('images', img));
-          const cres = await fetch('/api/carousel', { method: 'POST', body: cfd });
-          if (cres.ok) {
-            const blob = await cres.blob();
-            localCarouselUrl = URL.createObjectURL(blob);
-            setCarouselUrl(localCarouselUrl);
-          } else {
-            const errBody = await cres.json().catch(() => ({}));
-            toast.error(`PDF falhou: ${(errBody as {error?:string}).error ?? cres.status}`, { duration: 5000 });
-          }
+          const { generateCarouselPdf } = await import('@/lib/generateCarouselPdf');
+          localCarouselUrl = await generateCarouselPdf(form.images);
+          setCarouselUrl(localCarouselUrl);
         } catch (carouselErr) {
-          toast.error(`Erro ao gerar PDF: ${carouselErr instanceof Error ? carouselErr.message : 'desconhecido'}`, { duration: 5000 });
+          toast.error(
+            `Erro ao gerar PDF: ${carouselErr instanceof Error ? carouselErr.message : 'desconhecido'}`,
+            { duration: 6000 }
+          );
         }
       }
 
